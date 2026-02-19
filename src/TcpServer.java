@@ -202,6 +202,7 @@ public class TcpServer {
                         case CALL_ACCEPT:  handleCallAccept(packet); break;
                         case CALL_DENY:    handleCallDeny(packet); break;
                         case CALL_END:     handleCallEnd(packet); break;
+                        case GET_CHAT_MEMBERS_REQUEST: handleGetChatMembers(packet); break;
                         case LOGOUT: disconnect(); break;
 
                         default: System.out.println("Unknown packet: " + packet.getType());
@@ -601,6 +602,18 @@ public class TcpServer {
             // Optional: Curatenie in UDP Map (dar nu e critic, ca oricum nu se mai trimit pachete)
             TcpServer.activeCallers.remove(currentUser.getId());
             TcpServer.activeCallers.remove(partnerId);
+        }
+
+        private void handleGetChatMembers(NetworkPacket packet) throws IOException {
+            int requestedChatId = gson.fromJson(packet.getPayload(), Integer.class);
+            List<GroupMember> members = Database.selectGroupMembersByChatId(requestedChatId);
+
+            List<Integer> memberIds = new ArrayList<>();
+            for (GroupMember m : members) {
+                memberIds.add(m.getUserId());
+            }
+
+            sendPacket(PacketType.GET_CHAT_MEMBERS_RESPONSE, memberIds);
         }
 
         private void disconnect() {
