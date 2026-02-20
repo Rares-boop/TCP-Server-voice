@@ -39,19 +39,14 @@ public class TcpServer {
         new Thread(() -> {
             while (true) {
                 try {
-
                     Thread.sleep(30 * 60 * 1000);
-
                     System.out.println("[ROTATION] Generare chei Kyber noi...");
-                    long start = System.currentTimeMillis();
 
+                    long start = System.currentTimeMillis();
                     KeyPair newKeys = CryptoHelper.generateKyberKeys();
 
                     globalServerKyberKeys = newKeys;
-
                     System.out.println("[ROTATION] Chei schimbate in " + (System.currentTimeMillis() - start) + "ms. Urmatoarea rotire in 30 min.");
-
-                    Thread.sleep(30 * 60 * 1000);
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -103,7 +98,6 @@ public class TcpServer {
 //                     System.out.println("Relay: " + senderId + " -> " + targetId + " (" + packet.getLength() + " bytes)");
                 }
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -124,7 +118,6 @@ public class TcpServer {
         public ClientHandler(Socket socket) {
             this.socket = socket;
             try{
-
                 socket.setTcpNoDelay(true);
 
                 this.out = new PrintWriter(socket.getOutputStream(), true);
@@ -259,7 +252,6 @@ public class TcpServer {
             if (currentChatId == -1) return;
 
             long timestamp = System.currentTimeMillis();
-
             System.out.println("[MESSAGE ROUTING] Am primit un mesaj de la User " + currentUser.getId());
 
             int msgId = Database.insertMessageReturningId(
@@ -289,8 +281,6 @@ public class TcpServer {
                 int targetId = m.getUserId();
                 if (targetId == currentUser.getId()) continue;
 
-                boolean sent = false;
-
                 NetworkPacket p = new NetworkPacket(type, currentUser.getId(), payload);
 
                 synchronized (clients) {
@@ -298,13 +288,11 @@ public class TcpServer {
                         if (client.currentUser != null && client.currentUser.getId() == targetId) {
                             try {
                                 client.sendDirectPacket(p);
-                                sent = true;
                             } catch (IOException e) {}
                             break;
                         }
                     }
                 }
-
             }
         }
 
@@ -528,7 +516,7 @@ public class TcpServer {
             }
         }
 
-        private void handleGetBundle(NetworkPacket packet) throws IOException {
+        private void handleGetBundle(NetworkPacket packet){
             try {
                 ChatDtos.GetBundleRequestDto req = gson.fromJson(packet.getPayload(), ChatDtos.GetBundleRequestDto.class);
 
@@ -547,7 +535,7 @@ public class TcpServer {
             }
         }
 
-        private void handleCallRequest(NetworkPacket packet) throws IOException {
+        private void handleCallRequest(NetworkPacket packet){
             int targetUserId = gson.fromJson(packet.getPayload(), Integer.class);
             System.out.println("[CALL] User " + currentUser.getId() + " suna pe " + targetUserId);
 
@@ -555,16 +543,15 @@ public class TcpServer {
             sendToSpecificUser(targetUserId, requestPacket);
         }
 
-        private void handleCallAccept(NetworkPacket packet) throws IOException {
+        private void handleCallAccept(NetworkPacket packet){
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
-
             System.out.println("[CALL] User " + currentUser.getId() + " a raspuns lui " + callerId);
 
             NetworkPacket acceptPacket = new NetworkPacket(PacketType.CALL_ACCEPT, currentUser.getId(), currentUser.getId());
             sendToSpecificUser(callerId, acceptPacket);
         }
 
-        private void handleCallDeny(NetworkPacket packet) throws IOException {
+        private void handleCallDeny(NetworkPacket packet){
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
             System.out.println("[CALL] User " + currentUser.getId() + " a respins apelul lui " + callerId);
 
@@ -572,7 +559,7 @@ public class TcpServer {
             sendToSpecificUser(callerId, denyPacket);
         }
 
-        private void handleCallEnd(NetworkPacket packet) throws IOException {
+        private void handleCallEnd(NetworkPacket packet){
             int partnerId = gson.fromJson(packet.getPayload(), Integer.class);
             System.out.println("[CALL] Apel terminat intre " + currentUser.getId() + " si " + partnerId);
 
