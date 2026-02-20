@@ -28,7 +28,7 @@ public class TcpServer {
     public static void main(String[] args){
         try {
             globalServerKyberKeys = CryptoHelper.generateKyberKeys();
-            System.out.println("SERVER PORNIT ");
+            System.out.println("[SERVER] Server starting...");
 
             startKeyRotation();
             new Thread(TcpServer::tcpServer).start();
@@ -45,12 +45,12 @@ public class TcpServer {
             while (true) {
                 try {
                     Thread.sleep(30 * 60 * 1000);
-                    System.out.println("[ROTATION] Generare chei Kyber noi...");
+                    System.out.println("[ROTATION] Generating new kyber keys...");
 
                     long start = System.currentTimeMillis();
                     globalServerKyberKeys = CryptoHelper.generateKyberKeys();
 
-                    System.out.println("[ROTATION] Chei schimbate in " + (System.currentTimeMillis() - start) + "ms. Urmatoarea rotire in 30 min.");
+                    System.out.println("[ROTATION] Keys rotated in " + (System.currentTimeMillis() - start) + "ms. Next rotation in 30 min.");
 
                 } catch (Exception e) {
                     logger.log(Level.SEVERE, "Error during Kyber key rotation", e);
@@ -61,10 +61,11 @@ public class TcpServer {
 
     public static void tcpServer(){
         try(ServerSocket serverSocket = new ServerSocket(15555)){
+            System.out.println("[SERVER] TCP Server listening on port 15555...");
             while (true){
 
                 Socket clientSocket = serverSocket.accept();
-                logger.info("Client conectat: " + clientSocket.getInetAddress());
+                System.out.println("[CONNECTION] Client connected: " + clientSocket.getInetAddress());
 
                 ClientHandler handler = new ClientHandler(clientSocket);
                 new Thread(handler).start();
@@ -78,7 +79,7 @@ public class TcpServer {
         try(DatagramSocket udpSocket = new DatagramSocket(15556)){
             byte[] buffer = new byte[4096];
 
-            System.out.println("[UDP] Server Voce pornit pe portul 15556");
+            System.out.println("[SERVER] UDP Server active on port 15556");
 
             while (isUdpServerRunning){
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -98,8 +99,6 @@ public class TcpServer {
 
                     packet.setSocketAddress(targetAddr);
                     udpSocket.send(packet);
-
-//                     System.out.println("Relay: " + senderId + " -> " + targetId + " (" + packet.getLength() + " bytes)");
                 }
             }
         } catch (Exception e) {
@@ -136,7 +135,7 @@ public class TcpServer {
         public void run() {
             try {
                 if (!performHandshake()) {
-                    System.out.println("Handshake Esuat.");
+                    System.out.println("[AUTH] Handshake failed.");
                     disconnect();
                     return;
                 }
@@ -154,20 +153,20 @@ public class TcpServer {
                             String encryptedPayload = packet.getPayload().getAsString();
                             byte[] packedBytes = Base64.getDecoder().decode(encryptedPayload);
 
-                            System.out.println("ENCRYPTED DATA: " + encryptedPayload);
+                            System.out.println("[ENCRYPTED] DATA: " + encryptedPayload);
 
                             String originalJson = CryptoHelper.unpackAndDecrypt(sessionKey, packedBytes);
                             packet = NetworkPacket.fromJson(originalJson);
 
-                            System.out.println("Pachet Real: " + originalJson);
+                            System.out.println("[DECRYPTED] Original packet: " + originalJson);
 
                         } catch (Exception e) {
-                            System.out.println("Eroare decriptare Tunel!");
+                            System.out.println("[DECRYPTED] Tunnel decryption error!");
                             continue;
                         }
                     }
                     else {
-                        System.out.println("Pachet necriptat refuzat: " + packet.getType());
+                        System.out.println("[SERVER] Unencrypted packet rejected: " + packet.getType());
                         continue;
                     }
 
@@ -224,7 +223,7 @@ public class TcpServer {
                 Database.insertUserLog(user.getId(), "LOGIN", System.currentTimeMillis(), socket.getInetAddress().getHostAddress());
                 sendPacket(PacketType.LOGIN_RESPONSE, user);
 
-                System.out.println("[LOGIN] User " + user.getId() + " conectat.");
+                System.out.println("[AUTH] User " + user.getId() + " connected.");
 
                 new Thread(() -> {
                     try {
@@ -232,7 +231,7 @@ public class TcpServer {
                         List<String> missedPackets = Database.getAndClearPendingPackets(user.getId());
 
                         if (!missedPackets.isEmpty()) {
-                            System.out.println("Livrez " + missedPackets.size() + " pachete offline catre User " + user.getId());
+                            System.out.println("[OFFLINE] Delivering " + missedPackets.size() + " missed packets to User " + user.getId());
 
                             for (String json : missedPackets) {
                                 NetworkPacket p = NetworkPacket.fromJson(json);
@@ -256,7 +255,7 @@ public class TcpServer {
             if (currentChatId == -1) return;
 
             long timestamp = System.currentTimeMillis();
-            System.out.println("[MESSAGE ROUTING] Am primit un mesaj de la User " + currentUser.getId());
+            System.out.println("[CHAT] Message received from User " + currentUser.getId());
 
             int msgId = Database.insertMessageReturningId(
                     receivedMsg.getContent(),
@@ -268,10 +267,10 @@ public class TcpServer {
             Message fullMsg = new Message(msgId, receivedMsg.getContent(), timestamp, currentUser.getId(), currentChatId);
 
             String clearTextPreview = new String(receivedMsg.getContent());
-            System.out.println("CONTINUT DECRIPTAT (Ce vede serverul): " + clearTextPreview);
+            System.out.println("[DEBUG] Cleartext preview: " + clearTextPreview);
 
             String encryptedPreview = Base64.getEncoder().encodeToString(fullMsg.getContent());
-            System.out.println("CONTINUT (ENCTYPTED SERVER SIDE): " + encryptedPreview);
+            System.out.println("[DEBUG] Server-side encrypted preview: " + encryptedPreview);
 
             broadcastToPartner(currentChatId, PacketType.RECEIVE_MESSAGE, fullMsg);
 
@@ -292,7 +291,7 @@ public class TcpServer {
                         if (client.currentUser != null && client.currentUser.getId() == targetId) {
                             try {
                                 client.sendDirectPacket(p);
-                            } catch (IOException e) {}
+                            } catch (IOException e) {logger.log(Level.WARNING, "Failed to broadcast packet to user: " + targetId, e);}
                             break;
                         }
                     }
@@ -302,7 +301,7 @@ public class TcpServer {
 
         private boolean performHandshake() {
             try {
-                System.out.println("Handshake...");
+                System.out.println("[AUTH] Handshake started...");
 
                 KeyPair kyberPair = TcpServer.globalServerKyberKeys;
                 KeyPair ecPair = CryptoHelper.generateECKeys();
@@ -338,7 +337,7 @@ public class TcpServer {
 
                     this.sessionKey = CryptoHelper.combineSecrets(ecSecret, kyberSecret.getEncoded());
                     this.tempKyberPrivate = null;
-                    System.out.println("Tunel OK!");
+                    System.out.println("[AUTH] Tunel OK!");
                     return true;
                 }
                 return false;
@@ -358,10 +357,10 @@ public class TcpServer {
                     byte[] encryptedBytes = CryptoHelper.encryptAndPack(sessionKey, clearJson);
                     String encryptedBase64 = Base64.getEncoder().encodeToString(encryptedBytes);
                     NetworkPacket envelope = new NetworkPacket(PacketType.SECURE_ENVELOPE, p.getSenderId(), encryptedBase64);
-                    synchronized (out) { out.println(envelope.toJson()); out.flush(); }
+                    synchronized (this) { out.println(envelope.toJson()); out.flush(); }
                 } catch (Exception e) { logger.log(Level.SEVERE, "Error encrypting/sending secure envelope", e); }
             } else {
-                synchronized (out) { out.println(p.toJson()); out.flush(); }
+                synchronized (this) { out.println(p.toJson()); out.flush(); }
             }
         }
         
@@ -410,7 +409,7 @@ public class TcpServer {
 
                 sendToSpecificUser(dto.targetUserId, pBob);
 
-                System.out.println("[SERVER] Chat " + newChat.getId() + " creat. Ciphertext rutat catre User " + dto.targetUserId);
+                System.out.println("[GROUP] Chat " + newChat.getId() + " created. Key routed to User " + dto.targetUserId);
             }
         }
 
@@ -450,7 +449,7 @@ public class TcpServer {
                             client.sendDirectPacket(p);
                             isOnline = true;
                         } catch (IOException e) {
-                            logger.log(Level.WARNING, "Eroare la trimitere catre client online: {0}", targetUserId);
+                            logger.log(Level.WARNING, "Error sending to online client: {0}", targetUserId);
                         }
                         break;
                     }
@@ -458,7 +457,7 @@ public class TcpServer {
             }
 
             if (!isOnline) {
-                System.out.println("User " + targetUserId + " offline/inaccesibil. Salvez pachetul in coada...");
+                System.out.println("[SERVER] User " + targetUserId + " is offline. Saving packet to queue...");
                 String packetJson = p.toJson();
 
                 Database.insertPendingPacket(targetUserId, packetJson);
@@ -498,7 +497,7 @@ public class TcpServer {
             try {
                 ChatDtos.PublishKeysDto dto = gson.fromJson(packet.getPayload(), ChatDtos.PublishKeysDto.class);
 
-                System.out.println("[PGP] User " + currentUser.getId() + " publica chei noi...");
+                System.out.println("[PGP] User " + currentUser.getId() + " is publishing new keys...");
 
                 boolean success = Database.updateUserKeys(
                         currentUser.getId(),
@@ -508,9 +507,9 @@ public class TcpServer {
                 );
 
                 if (success) {
-                    System.out.println("Chei salvate in DB pentru User " + currentUser.getId());
+                    System.out.println("[PGP] Keys saved to database for User " + currentUser.getId());
                 } else {
-                    System.out.println("Eroare la salvarea cheilor in DB!");
+                    System.out.println("[ERROR] Error saving keys to database!");
                 }
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Error publishing keys to database", e);
@@ -521,15 +520,15 @@ public class TcpServer {
             try {
                 ChatDtos.GetBundleRequestDto req = gson.fromJson(packet.getPayload(), ChatDtos.GetBundleRequestDto.class);
 
-                System.out.println("User " + currentUser.getId() + " cere cheile Userului " + req.targetUserId);
+                System.out.println("[PGP] User " + currentUser.getId() + " requested bundle for User " + req.targetUserId);
 
                 ChatDtos.GetBundleResponseDto bundle = Database.selectUserKeys(req.targetUserId);
 
                 if (bundle != null) {
                     sendPacket(PacketType.GET_BUNDLE_RESPONSE, bundle);
-                    System.out.println("Bundle trimis catre " + currentUser.getId());
+                    System.out.println("[PGP] Bundle sent to User " + currentUser.getId());
                 } else {
-                    System.out.println("Nu am gasit chei pentru User " + req.targetUserId + " (Poate nu are PGP activat)");
+                    System.out.println("[PGP] Keys not found for User " + req.targetUserId);
                 }
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Error retrieving key bundle", e);
@@ -538,7 +537,7 @@ public class TcpServer {
 
         private void handleCallRequest(NetworkPacket packet){
             int targetUserId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("[CALL] User " + currentUser.getId() + " suna pe " + targetUserId);
+            System.out.println("[CALL] User " + currentUser.getId() + " is calling " + targetUserId);
 
             NetworkPacket requestPacket = new NetworkPacket(PacketType.CALL_REQUEST, currentUser.getId(), currentUser.getId());
             sendToSpecificUser(targetUserId, requestPacket);
@@ -546,7 +545,7 @@ public class TcpServer {
 
         private void handleCallAccept(NetworkPacket packet){
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("[CALL] User " + currentUser.getId() + " a raspuns lui " + callerId);
+            System.out.println("[CALL] User " + currentUser.getId() + " accepted call from " + callerId);
 
             NetworkPacket acceptPacket = new NetworkPacket(PacketType.CALL_ACCEPT, currentUser.getId(), currentUser.getId());
             sendToSpecificUser(callerId, acceptPacket);
@@ -554,7 +553,7 @@ public class TcpServer {
 
         private void handleCallDeny(NetworkPacket packet){
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("[CALL] User " + currentUser.getId() + " a respins apelul lui " + callerId);
+            System.out.println("[VOICE] User " + currentUser.getId() + " rejected call from " + callerId);
 
             NetworkPacket denyPacket = new NetworkPacket(PacketType.CALL_DENY, currentUser.getId(), "BUSY");
             sendToSpecificUser(callerId, denyPacket);
@@ -562,7 +561,7 @@ public class TcpServer {
 
         private void handleCallEnd(NetworkPacket packet){
             int partnerId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("[CALL] Apel terminat intre " + currentUser.getId() + " si " + partnerId);
+            System.out.println("[VOICE] Call ended between " + currentUser.getId() + " and " + partnerId);
 
             NetworkPacket endPacket = new NetworkPacket(PacketType.CALL_END, currentUser.getId(), "END");
             sendToSpecificUser(partnerId, endPacket);
@@ -586,8 +585,8 @@ public class TcpServer {
         private void disconnect() {
             isRunning = false;
             synchronized (clients) { clients.remove(this); }
-            try { socket.close(); } catch (IOException e) {}
-            System.out.println("Client deconectat.");
+            try { socket.close(); } catch (IOException e) {logger.log(Level.WARNING, "Error closing client socket", e);}
+            logger.info("Client disconnected.");
         }
     }
 }
