@@ -11,14 +11,19 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.crypto.SecretKey;
 
 public class TcpServer {
-    public static final List<ClientHandler> clients = new ArrayList<>();
+    private static final List<ClientHandler> clients = new ArrayList<>();
     public static final Map<Integer, InetSocketAddress> activeCallers = new ConcurrentHashMap<>();
 
     public static final Gson gson = new Gson();
     public static volatile KeyPair globalServerKyberKeys;
+
+    public static volatile boolean isUdpServerRunning = true;
+    private static final Logger logger = java.util.logging.Logger.getLogger(TcpServer.class.getName());
 
     public static void main(String[] args){
         try {
@@ -31,7 +36,7 @@ public class TcpServer {
             new Thread(TcpServer::udpServer).start();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "Something went wrong", e);
         }
     }
 
@@ -43,13 +48,12 @@ public class TcpServer {
                     System.out.println("[ROTATION] Generare chei Kyber noi...");
 
                     long start = System.currentTimeMillis();
-                    KeyPair newKeys = CryptoHelper.generateKyberKeys();
+                    globalServerKyberKeys = CryptoHelper.generateKyberKeys();
 
-                    globalServerKyberKeys = newKeys;
                     System.out.println("[ROTATION] Chei schimbate in " + (System.currentTimeMillis() - start) + "ms. Urmatoarea rotire in 30 min.");
 
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    logger.log(Level.SEVERE, "Error during Kyber key rotation", e);
                 }
             }
         }).start();
@@ -58,25 +62,25 @@ public class TcpServer {
     public static void tcpServer(){
         try(ServerSocket serverSocket = new ServerSocket(15555)){
             while (true){
+
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Client conectat: " + clientSocket.getInetAddress());
+                logger.info("Client conectat: " + clientSocket.getInetAddress());
 
                 ClientHandler handler = new ClientHandler(clientSocket);
                 new Thread(handler).start();
             }
         } catch (IOException e) {
-            System.out.println("[ERROR] EROARE PORT 15555: " + e.getMessage());
+            logger.log(Level.SEVERE, "PORT IN USE", e);
         }
     }
 
     public static void udpServer(){
-        try{
-            DatagramSocket udpSocket = new DatagramSocket(15556);
+        try(DatagramSocket udpSocket = new DatagramSocket(15556)){
             byte[] buffer = new byte[4096];
 
             System.out.println("[UDP] Server Voce pornit pe portul 15556");
 
-            while (true){
+            while (isUdpServerRunning){
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 udpSocket.receive(packet);
 
@@ -99,12 +103,12 @@ public class TcpServer {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "Critical error in UDP server", e);
         }
     }
 
     static class ClientHandler implements Runnable{
-        private Socket socket;
+        private final Socket socket;
         private PrintWriter out;
         private BufferedReader in;
 
@@ -124,7 +128,7 @@ public class TcpServer {
                 this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.log(Level.SEVERE, "Error initializing I/O streams for client", e);
             }
         }
 
@@ -238,7 +242,7 @@ public class TcpServer {
                             }
                         }
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        logger.log(Level.SEVERE, "Error delivering offline packets", e);
                     }
                 }).start();
 
@@ -355,7 +359,7 @@ public class TcpServer {
                     String encryptedBase64 = Base64.getEncoder().encodeToString(encryptedBytes);
                     NetworkPacket envelope = new NetworkPacket(PacketType.SECURE_ENVELOPE, p.getSenderId(), encryptedBase64);
                     synchronized (out) { out.println(envelope.toJson()); out.flush(); }
-                } catch (Exception e) { e.printStackTrace(); }
+                } catch (Exception e) { logger.log(Level.SEVERE, "Error encrypting/sending secure envelope", e); }
             } else {
                 synchronized (out) { out.println(p.toJson()); out.flush(); }
             }
@@ -429,11 +433,9 @@ public class TcpServer {
             NetworkPacket broadcastPacket = new NetworkPacket(PacketType.DELETE_CHAT_BROADCAST, currentUser.getId(), chatId);
             sendDirectPacket(broadcastPacket);
 
-            if (members != null) {
-                for (GroupMember m : members) {
-                    if (m.getUserId() != currentUser.getId()) {
-                        sendToSpecificUser(m.getUserId(), broadcastPacket);
-                    }
+            for (GroupMember m : members) {
+                if (m.getUserId() != currentUser.getId()) {
+                    sendToSpecificUser(m.getUserId(), broadcastPacket);
                 }
             }
         }
@@ -448,7 +450,7 @@ public class TcpServer {
                             client.sendDirectPacket(p);
                             isOnline = true;
                         } catch (IOException e) {
-                            isOnline = false;
+                            logger.log(Level.WARNING, "Eroare la trimitere catre client online: {0}", targetUserId);
                         }
                         break;
                     }
@@ -465,7 +467,6 @@ public class TcpServer {
 
         private void broadcastToChatMembers(int chatId, PacketType type, Object payload) {
             List<GroupMember> members = Database.selectGroupMembersByChatId(chatId);
-            if (members == null) return;
             NetworkPacket p = new NetworkPacket(type, currentUser.getId(), payload);
             for (GroupMember m : members) {
                 if (m.getUserId() != currentUser.getId()) {
@@ -512,7 +513,7 @@ public class TcpServer {
                     System.out.println("Eroare la salvarea cheilor in DB!");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.log(Level.SEVERE, "Error publishing keys to database", e);
             }
         }
 
@@ -531,7 +532,7 @@ public class TcpServer {
                     System.out.println("Nu am gasit chei pentru User " + req.targetUserId + " (Poate nu are PGP activat)");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.log(Level.SEVERE, "Error retrieving key bundle", e);
             }
         }
 
