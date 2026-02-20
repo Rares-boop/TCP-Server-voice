@@ -5,15 +5,11 @@ import de.mkammerer.argon2.Argon2Factory;
 
 public class PasswordUtils {
     public static SecureRandom secureRandom =  new SecureRandom();
-    public static void main(String[] args){
-        System.out.println("DA");
-        String password = "password3";
-        String salt = generateSalt(50);
-        String hashedPassword = hashPassword(password, salt);
-        System.out.println("Salt "+salt);
-        System.out.println("Hashed password "+hashedPassword);
-        System.out.println("Verify hash "+verifyPassword(password, salt, hashedPassword));
+
+    private PasswordUtils() {
+        throw new UnsupportedOperationException("Utility class");
     }
+
     public static String generateSalt(int length){
         byte[] salt = new byte[length];
         secureRandom.nextBytes(salt);

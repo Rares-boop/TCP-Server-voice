@@ -23,7 +23,7 @@ public class TcpServer {
     public static void main(String[] args){
         try {
             globalServerKyberKeys = CryptoHelper.generateKyberKeys();
-            System.out.println("SERVER PORNIT");
+            System.out.println("SERVER PORNIT ");
 
             startKeyRotation();
             new Thread(TcpServer::tcpServer).start();
@@ -42,14 +42,14 @@ public class TcpServer {
 
                     Thread.sleep(30 * 60 * 1000);
 
-                    System.out.println("🔄 [ROTATION] Generare chei Kyber noi...");
+                    System.out.println("[ROTATION] Generare chei Kyber noi...");
                     long start = System.currentTimeMillis();
 
                     KeyPair newKeys = CryptoHelper.generateKyberKeys();
 
                     globalServerKyberKeys = newKeys;
 
-                    System.out.println("✅ [ROTATION] Chei schimbate in " + (System.currentTimeMillis() - start) + "ms. Urmatoarea rotire in 30 min.");
+                    System.out.println("[ROTATION] Chei schimbate in " + (System.currentTimeMillis() - start) + "ms. Urmatoarea rotire in 30 min.");
 
                     Thread.sleep(30 * 60 * 1000);
 
@@ -70,7 +70,7 @@ public class TcpServer {
                 new Thread(handler).start();
             }
         } catch (IOException e) {
-            System.out.println("EROARE PORT 15555: " + e.getMessage());
+            System.out.println("[ERROR] EROARE PORT 15555: " + e.getMessage());
         }
     }
 
@@ -79,7 +79,7 @@ public class TcpServer {
             DatagramSocket udpSocket = new DatagramSocket(15556);
             byte[] buffer = new byte[4096];
 
-            System.out.println("🎧 [UDP] Server Voce pornit pe portul 15556");
+            System.out.println("[UDP] Server Voce pornit pe portul 15556");
 
             while (true){
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -100,14 +100,11 @@ public class TcpServer {
                     packet.setSocketAddress(targetAddr);
                     udpSocket.send(packet);
 
-                     System.out.println("Relay: " + senderId + " -> " + targetId + " (" + packet.getLength() + " bytes)");
-                } else {
+//                     System.out.println("Relay: " + senderId + " -> " + targetId + " (" + packet.getLength() + " bytes)");
                 }
-
             }
 
         } catch (Exception e) {
-//            throw new RuntimeException(e);
             e.printStackTrace();
         }
     }
@@ -238,7 +235,7 @@ public class TcpServer {
                         List<String> missedPackets = Database.getAndClearPendingPackets(user.getId());
 
                         if (!missedPackets.isEmpty()) {
-                            System.out.println("📬 Livrez " + missedPackets.size() + " pachete offline catre User " + user.getId());
+                            System.out.println("Livrez " + missedPackets.size() + " pachete offline catre User " + user.getId());
 
                             for (String json : missedPackets) {
                                 NetworkPacket p = NetworkPacket.fromJson(json);
@@ -275,7 +272,7 @@ public class TcpServer {
             Message fullMsg = new Message(msgId, receivedMsg.getContent(), timestamp, currentUser.getId(), currentChatId);
 
             String clearTextPreview = new String(receivedMsg.getContent());
-            System.out.println("🔓 CONTINUT DECRIPTAT (Ce vede serverul): " + clearTextPreview);
+            System.out.println("CONTINUT DECRIPTAT (Ce vede serverul): " + clearTextPreview);
 
             String encryptedPreview = Base64.getEncoder().encodeToString(fullMsg.getContent());
             System.out.println("CONTINUT (ENCTYPTED SERVER SIDE): " + encryptedPreview);
@@ -421,7 +418,7 @@ public class TcpServer {
 
                 sendToSpecificUser(dto.targetUserId, pBob);
 
-                System.out.println("✅ [SERVER] Chat " + newChat.getId() + " creat. Ciphertext rutat catre User " + dto.targetUserId);
+                System.out.println("[SERVER] Chat " + newChat.getId() + " creat. Ciphertext rutat catre User " + dto.targetUserId);
             }
         }
 
@@ -471,7 +468,7 @@ public class TcpServer {
             }
 
             if (!isOnline) {
-                System.out.println("⚠️ User " + targetUserId + " offline/inaccesibil. Salvez pachetul in coada...");
+                System.out.println("User " + targetUserId + " offline/inaccesibil. Salvez pachetul in coada...");
                 String packetJson = p.toJson();
 
                 Database.insertPendingPacket(targetUserId, packetJson);
@@ -508,13 +505,11 @@ public class TcpServer {
             }
         }
 
-        // --- HANDLERS PENTRU PROTOCOLUL PGP / X3DH ---
-
         private void handlePublishKeys(NetworkPacket packet) {
             try {
                 ChatDtos.PublishKeysDto dto = gson.fromJson(packet.getPayload(), ChatDtos.PublishKeysDto.class);
 
-                System.out.println("🔐 [PGP] User " + currentUser.getId() + " publica chei noi...");
+                System.out.println("[PGP] User " + currentUser.getId() + " publica chei noi...");
 
                 boolean success = Database.updateUserKeys(
                         currentUser.getId(),
@@ -524,9 +519,9 @@ public class TcpServer {
                 );
 
                 if (success) {
-                    System.out.println("✅ Chei salvate in DB pentru User " + currentUser.getId());
+                    System.out.println("Chei salvate in DB pentru User " + currentUser.getId());
                 } else {
-                    System.out.println("❌ Eroare la salvarea cheilor in DB!");
+                    System.out.println("Eroare la salvarea cheilor in DB!");
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -537,55 +532,41 @@ public class TcpServer {
             try {
                 ChatDtos.GetBundleRequestDto req = gson.fromJson(packet.getPayload(), ChatDtos.GetBundleRequestDto.class);
 
-                System.out.println("🔍 [PGP] User " + currentUser.getId() + " cere cheile Userului " + req.targetUserId);
+                System.out.println("User " + currentUser.getId() + " cere cheile Userului " + req.targetUserId);
 
                 ChatDtos.GetBundleResponseDto bundle = Database.selectUserKeys(req.targetUserId);
 
                 if (bundle != null) {
                     sendPacket(PacketType.GET_BUNDLE_RESPONSE, bundle);
-                    System.out.println("📤 Bundle trimis catre " + currentUser.getId());
+                    System.out.println("Bundle trimis catre " + currentUser.getId());
                 } else {
-                    System.out.println("⚠️ Nu am gasit chei pentru User " + req.targetUserId + " (Poate nu are PGP activat)");
+                    System.out.println("Nu am gasit chei pentru User " + req.targetUserId + " (Poate nu are PGP activat)");
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
-        // --- LOGICA DE APEL (SIGNALING) ---
-
         private void handleCallRequest(NetworkPacket packet) throws IOException {
-            // Payload: ID-ul userului pe care il sunam (int)
             int targetUserId = gson.fromJson(packet.getPayload(), Integer.class);
+            System.out.println("[CALL] User " + currentUser.getId() + " suna pe " + targetUserId);
 
-            System.out.println("📞 [CALL] User " + currentUser.getId() + " suna pe " + targetUserId);
-
-            // Trimitem notificare catre Target ca il suna cineva
-            // Payload la Target: ID-ul celui care suna (SenderID)
             NetworkPacket requestPacket = new NetworkPacket(PacketType.CALL_REQUEST, currentUser.getId(), currentUser.getId());
-
             sendToSpecificUser(targetUserId, requestPacket);
         }
 
         private void handleCallAccept(NetworkPacket packet) throws IOException {
-            // Payload: ID-ul celui care m-a sunat (si caruia ii raspund)
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
 
-            System.out.println("✅ [CALL] User " + currentUser.getId() + " a raspuns lui " + callerId);
+            System.out.println("[CALL] User " + currentUser.getId() + " a raspuns lui " + callerId);
 
-            // 1. Anuntam apelantul ca s-a raspuns
             NetworkPacket acceptPacket = new NetworkPacket(PacketType.CALL_ACCEPT, currentUser.getId(), currentUser.getId());
             sendToSpecificUser(callerId, acceptPacket);
-
-            // ATENTIE COAIE: Aici NU setam activeCallers pentru UDP!
-            // De ce? Pentru ca nu stim portul UDP al userului inca.
-            // Userul (Android) va primi acest pachet si VA TRIMITE SINGUR un pachet UDP "Hello".
-            // Abia atunci serverul UDP il va baga in mapa.
         }
 
         private void handleCallDeny(NetworkPacket packet) throws IOException {
             int callerId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("❌ [CALL] User " + currentUser.getId() + " a respins apelul lui " + callerId);
+            System.out.println("[CALL] User " + currentUser.getId() + " a respins apelul lui " + callerId);
 
             NetworkPacket denyPacket = new NetworkPacket(PacketType.CALL_DENY, currentUser.getId(), "BUSY");
             sendToSpecificUser(callerId, denyPacket);
@@ -593,13 +574,11 @@ public class TcpServer {
 
         private void handleCallEnd(NetworkPacket packet) throws IOException {
             int partnerId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("🛑 [CALL] Apel terminat intre " + currentUser.getId() + " si " + partnerId);
+            System.out.println("[CALL] Apel terminat intre " + currentUser.getId() + " si " + partnerId);
 
-            // Anuntam partenerul sa inchida microfonul/difuzorul
             NetworkPacket endPacket = new NetworkPacket(PacketType.CALL_END, currentUser.getId(), "END");
             sendToSpecificUser(partnerId, endPacket);
 
-            // Optional: Curatenie in UDP Map (dar nu e critic, ca oricum nu se mai trimit pachete)
             TcpServer.activeCallers.remove(currentUser.getId());
             TcpServer.activeCallers.remove(partnerId);
         }
