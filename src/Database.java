@@ -10,6 +10,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import chat.ChatDtos;
 
@@ -19,6 +21,7 @@ public class Database {
             +":"+dotenv.get("DB_PORT")+"/"+dotenv.get("DB_DATABASE");
     public static String user = dotenv.get("DB_USER");
     public static String password = dotenv.get("DB_PASSWORD");
+    private static final Logger logger = Logger.getLogger(Database.class.getName());
     public static void main(String[] args){
         System.out.println("DA");
 
@@ -50,7 +53,7 @@ public class Database {
             stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create USERS table", e);
         }
     }
 
@@ -70,10 +73,10 @@ public class Database {
             ps.setLong(4, createdAt);
 
             ps.executeUpdate();
-            System.out.println("User inserted succesfully ");
+            logger.info("[DATABASE] User inserted successfully: " + username);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting user: " + username, e);
         }
     }
 
@@ -110,7 +113,7 @@ public class Database {
             }
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error selecting user by username: " + usernameData, e);
         }
 
         return userData;
@@ -132,7 +135,7 @@ public class Database {
             }
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching users for conversation", e);
         }
         return users;
     }
@@ -152,7 +155,7 @@ public class Database {
             return rows > 0;
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error updating keys for user " + userId, e);
             return false;
         }
     }
@@ -175,7 +178,7 @@ public class Database {
                 return new ChatDtos.GetBundleResponseDto(targetUserId, ik, spk, sig);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching keys for user " + targetUserId, e);
         }
         return null;
     }
@@ -198,11 +201,11 @@ public class Database {
                 stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create USER_LOGS table", e);
         }
     }
 
-    public static boolean insertUserLog(int userId, String actionType, long timestamp,
+    public static void insertUserLog(int userId, String actionType, long timestamp,
                                      String ipAddress){
         String query = """
                 INSERT INTO USER_LOGS(id_user, action_type, log_timestamp, ip_address)
@@ -216,12 +219,10 @@ public class Database {
             ps.setLong(3, timestamp);
             ps.setString(4, ipAddress);
 
-            int rows = ps.executeUpdate();
-
-            return rows > 0;
+            ps.executeUpdate();
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting user log", e);
         }
     }
 
@@ -242,7 +243,7 @@ public class Database {
                     stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create GROUP_MEMBERS table", e);
         }
     }
 
@@ -257,10 +258,10 @@ public class Database {
             ps.setInt(2, userId);
 
             ps.executeUpdate();
-            System.out.println("GROUP MEMBER INSERTED "+userId);
+            logger.info("[DATABASE] User " + userId + " added to Group " + groupId);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting group member", e);
         }
     }
 
@@ -281,7 +282,7 @@ public class Database {
                 currentChatGroupMembers.add(new GroupMember(groupIdDatabase, userId));
             }
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching group members for group " + groupId, e);
         }
 
         return  currentChatGroupMembers;
@@ -313,12 +314,16 @@ public class Database {
             }
             catch (SQLException e){
                 connection.rollback();
-                throw e;
+                logger.log(Level.SEVERE, "[DATABASE] Transaction failed. Rolled back chat deletion: " + chatId, e);
+
+                return false;
+
             }finally {
                 connection.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error during transactional group delete", e);
+            return false;
         }
     }
 
@@ -336,7 +341,7 @@ public class Database {
                     stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create GROUP_CHATS table", e);
         }
     }
 
@@ -361,7 +366,7 @@ public class Database {
                 currentUserGroupChats.add(new GroupChat(id, name));
             }
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching group chats for user " + userId, e);
         }
         return currentUserGroupChats;
     }
@@ -375,10 +380,10 @@ public class Database {
             ps.setString(1, name);
 
             ps.executeUpdate();
-            System.out.println("GROUP CHAT INSERTED "+name);
+            logger.info("[DATABASE] Group chat inserted: " + name);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting group chat", e);
         }
     }
 
@@ -401,7 +406,7 @@ public class Database {
             }
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching group chat by name: " + groupChatName, e);
         }
 
         return groupChat;
@@ -419,7 +424,8 @@ public class Database {
             return rows > 0;
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error updating group chat name", e);
+            return false;
         }
     }
 
@@ -442,7 +448,7 @@ public class Database {
             stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create MESSAGES table", e);
         }
     }
 
@@ -465,10 +471,10 @@ public class Database {
                 id = rs.getInt(1);
             }
 
-            System.out.println("Message inserted sucessfully ");
+            logger.info("[DATABASE] Message inserted successfully, ID: " + id);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting message", e);
         }
         return id;
     }
@@ -492,7 +498,7 @@ public class Database {
                 groupMessages.add(new Message(id, content, timestamp, senderId, groupIdDatabase));
             }
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Error fetching messages for group " + groupId, e);
         }
         return groupMessages;
     }
@@ -512,7 +518,7 @@ public class Database {
             return rows > 0;
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error updating message ID: " + id, e);
             return false;
         }
     }
@@ -531,7 +537,7 @@ public class Database {
             return rows > 0;
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error deleting message ID: " + id, e);
             return false;
         }
     }
@@ -553,7 +559,7 @@ public class Database {
             stmt.executeUpdate(query);
 
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "[DATABASE] Failed to create OFFLINE_QUEUE table", e);
         }
     }
 
@@ -569,7 +575,7 @@ public class Database {
             ps.executeUpdate();
 
         } catch (SQLException e){
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error inserting pending packet for user " + targetId, e);
         }
     }
 
@@ -597,13 +603,13 @@ public class Database {
                     delStmt.executeUpdate();
                 }
                 connection.commit();
-                System.out.println("[OFFLINE] Livrat " + queue.size() + " pachete catre User " + userId);
+                logger.info("[OFFLINE] Delivered " + queue.size() + " packets to User " + userId);
             } else {
                 connection.rollback();
             }
 
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "[DATABASE] Error clearing pending packets for user " + userId, e);
         }
         return queue;
     }

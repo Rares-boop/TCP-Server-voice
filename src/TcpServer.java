@@ -1,5 +1,6 @@
 import chat.*;
 import com.google.gson.Gson;
+import io.github.cdimascio.dotenv.Dotenv;
 
 import java.io.*;
 import java.net.*;
@@ -11,6 +12,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.SecretKey;
@@ -23,7 +27,15 @@ public class TcpServer {
     public static volatile KeyPair globalServerKyberKeys;
 
     public static volatile boolean isUdpServerRunning = true;
+    public static volatile boolean isServerRunning = true;
+
     private static final Logger logger = java.util.logging.Logger.getLogger(TcpServer.class.getName());
+    private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+    private static final Dotenv dotenv = Dotenv.load();
+
+    private static final int TCP_PORT = Integer.parseInt(dotenv.get("TCP_PORT", "25555"));
+    private static final int UDP_PORT = Integer.parseInt(dotenv.get("UDP_PORT", "25556"));
 
     public static void main(String[] args){
         try {
@@ -37,49 +49,50 @@ public class TcpServer {
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Something went wrong", e);
+            scheduler.shutdown();
         }
     }
 
     public static void startKeyRotation() {
-        new Thread(() -> {
-            while (true) {
-                try {
-                    Thread.sleep(30 * 60 * 1000);
-                    System.out.println("[ROTATION] Generating new kyber keys...");
+        scheduler.scheduleAtFixedRate(()->{
+            try {
+                System.out.println("[ROTATION] Generating new kyber keys...");
 
-                    long start = System.currentTimeMillis();
-                    globalServerKyberKeys = CryptoHelper.generateKyberKeys();
+                long start = System.currentTimeMillis();
+                globalServerKyberKeys = CryptoHelper.generateKyberKeys();
 
-                    System.out.println("[ROTATION] Keys rotated in " + (System.currentTimeMillis() - start) + "ms. Next rotation in 30 min.");
+                System.out.println("[ROTATION] Keys rotated in " + (System.currentTimeMillis() - start) + "ms. Next rotation in 30 min.");
 
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, "Error during Kyber key rotation", e);
-                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Error during Kyber key rotation", e);
             }
-        }).start();
+        }, 30, 30 , TimeUnit.MINUTES);
     }
 
     public static void tcpServer(){
-        try(ServerSocket serverSocket = new ServerSocket(15555)){
-            System.out.println("[SERVER] TCP Server listening on port 15555...");
-            while (true){
+        try(ServerSocket serverSocket = new ServerSocket(TCP_PORT)){
+            serverSocket.setSoTimeout(1000);
+            System.out.println("[SERVER] TCP Server listening on port " + TCP_PORT + "...");
 
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("[CONNECTION] Client connected: " + clientSocket.getInetAddress());
+            while (isServerRunning){
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    System.out.println("[CONNECTION] Client connected: " + clientSocket.getInetAddress());
 
-                ClientHandler handler = new ClientHandler(clientSocket);
-                new Thread(handler).start();
+                    ClientHandler handler = new ClientHandler(clientSocket);
+                    new Thread(handler).start();
+                }catch (SocketTimeoutException _){}
             }
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "PORT IN USE", e);
+            logger.log(Level.SEVERE, "[SERVER] PORT IN USE", e);
         }
     }
 
     public static void udpServer(){
-        try(DatagramSocket udpSocket = new DatagramSocket(15556)){
+        try(DatagramSocket udpSocket = new DatagramSocket(UDP_PORT)){
             byte[] buffer = new byte[4096];
 
-            System.out.println("[SERVER] UDP Server active on port 15556");
+            System.out.println("[SERVER] UDP Server active on port " + UDP_PORT);
 
             while (isUdpServerRunning){
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -116,7 +129,6 @@ public class TcpServer {
         private boolean isRunning = true;
 
         private SecretKey sessionKey = null;
-        private PrivateKey tempKyberPrivate = null;
 
         public ClientHandler(Socket socket) {
             this.socket = socket;
@@ -301,12 +313,12 @@ public class TcpServer {
 
         private boolean performHandshake() {
             try {
-                System.out.println("[AUTH] Handshake started...");
+                System.out.println("[HANDSHAKE] Handshake started...");
 
                 KeyPair kyberPair = TcpServer.globalServerKyberKeys;
                 KeyPair ecPair = CryptoHelper.generateECKeys();
 
-                this.tempKyberPrivate = kyberPair.getPrivate();
+                PrivateKey tempKyberPrivate = kyberPair.getPrivate();
                 byte[] pubBytes = kyberPair.getPublic().getEncoded();
 
                 String pubBase64 = Base64.getEncoder().encodeToString(pubBytes);
@@ -315,7 +327,7 @@ public class TcpServer {
                 String combinedPayload = pubBase64 + ":" + ecPubBase64;
 
                 NetworkPacket hello = new NetworkPacket(PacketType.KYBER_SERVER_HELLO, 0, combinedPayload);
-                synchronized (out){
+                synchronized (this){
                     out.println(hello.toJson());
                     out.flush();
                 }
@@ -330,14 +342,13 @@ public class TcpServer {
                     byte[] kyberCipherBytes = Base64.getDecoder().decode(parts[0]);
                     byte[] clientECPubBytes = Base64.getDecoder().decode(parts[1]);
 
-                    SecretKey kyberSecret = CryptoHelper.decapsulate(this.tempKyberPrivate, kyberCipherBytes);
+                    SecretKey kyberSecret = CryptoHelper.decapsulate(tempKyberPrivate, kyberCipherBytes);
 
                     PublicKey clientECPub = CryptoHelper.decodeECPublicKey(clientECPubBytes);
                     byte[] ecSecret = CryptoHelper.doECDH(ecPair.getPrivate(), clientECPub);
 
                     this.sessionKey = CryptoHelper.combineSecrets(ecSecret, kyberSecret.getEncoded());
-                    this.tempKyberPrivate = null;
-                    System.out.println("[AUTH] Tunel OK!");
+                    System.out.println("[HANDSHAKE] Tunel OK!");
                     return true;
                 }
                 return false;
@@ -416,26 +427,34 @@ public class TcpServer {
         private void handleRenameChat(NetworkPacket packet) throws IOException {
             ChatDtos.RenameGroupDto dto = gson.fromJson(packet.getPayload(), ChatDtos.RenameGroupDto.class);
 
-            Database.updateGroupChatName(dto.chatId, dto.newName);
-            NetworkPacket broadcastPacket = new NetworkPacket(PacketType.RENAME_CHAT_BROADCAST, currentUser.getId(), dto);
+            if(Database.updateGroupChatName(dto.chatId, dto.newName)) {
+                NetworkPacket broadcastPacket = new NetworkPacket(PacketType.RENAME_CHAT_BROADCAST, currentUser.getId(), dto);
 
-            sendDirectPacket(broadcastPacket);
-            broadcastToChatMembers(dto.chatId, PacketType.RENAME_CHAT_BROADCAST, dto);
+                sendDirectPacket(broadcastPacket);
+                broadcastToChatMembers(dto.chatId, PacketType.RENAME_CHAT_BROADCAST, dto);
+            }
+            else{
+                System.out.println("[SERVER] Failed to rename chat " + dto.chatId + " in DB. Broadcast canceled.");
+            }
         }
 
         private void handleDeleteChat(NetworkPacket packet) throws IOException {
             int chatId = gson.fromJson(packet.getPayload(), Integer.class);
 
             List<GroupMember> members = Database.selectGroupMembersByChatId(chatId);
-            Database.deleteGroupChatTransactional(chatId);
 
-            NetworkPacket broadcastPacket = new NetworkPacket(PacketType.DELETE_CHAT_BROADCAST, currentUser.getId(), chatId);
-            sendDirectPacket(broadcastPacket);
+            if(Database.deleteGroupChatTransactional(chatId)) {
+                NetworkPacket broadcastPacket = new NetworkPacket(PacketType.DELETE_CHAT_BROADCAST, currentUser.getId(), chatId);
+                sendDirectPacket(broadcastPacket);
 
-            for (GroupMember m : members) {
-                if (m.getUserId() != currentUser.getId()) {
-                    sendToSpecificUser(m.getUserId(), broadcastPacket);
+                for (GroupMember m : members) {
+                    if (m.getUserId() != currentUser.getId()) {
+                        sendToSpecificUser(m.getUserId(), broadcastPacket);
+                    }
                 }
+            }
+            else{
+                System.out.println("[SERVER] Failed to delete chat from DB. Broadcast canceled.");
             }
         }
 
@@ -457,6 +476,16 @@ public class TcpServer {
             }
 
             if (!isOnline) {
+                PacketType type = p.getType();
+                if (type == PacketType.CALL_REQUEST ||
+                        type == PacketType.CALL_ACCEPT ||
+                        type == PacketType.CALL_DENY ||
+                        type == PacketType.CALL_END) {
+
+                    System.out.println("[SERVER] User " + targetUserId + " is offline. Dropping VoIP packet ");
+                    return;
+                }
+
                 System.out.println("[SERVER] User " + targetUserId + " is offline. Saving packet to queue...");
                 String packetJson = p.toJson();
 
