@@ -565,11 +565,11 @@ public class TcpServer {
         }
 
         private void handleCallRequest(NetworkPacket packet){
-            int targetUserId = gson.fromJson(packet.getPayload(), Integer.class);
-            System.out.println("[CALL] User " + currentUser.getId() + " is calling " + targetUserId);
+            ChatDtos.CallRequestDto dto = gson.fromJson(packet.getPayload(), ChatDtos.CallRequestDto.class);
+            System.out.println("[CALL] User " + currentUser.getId() + " is calling " + dto.targetUserId + " on Chat " + dto.chatId);
 
-            NetworkPacket requestPacket = new NetworkPacket(PacketType.CALL_REQUEST, currentUser.getId(), currentUser.getId());
-            sendToSpecificUser(targetUserId, requestPacket);
+            NetworkPacket requestPacket = new NetworkPacket(PacketType.CALL_REQUEST, currentUser.getId(), dto);
+            sendToSpecificUser(dto.targetUserId, requestPacket);
         }
 
         private void handleCallAccept(NetworkPacket packet){
