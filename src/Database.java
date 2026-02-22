@@ -1,7 +1,8 @@
-import chat.GroupChat;
-import chat.GroupMember;
-import chat.Message;
-import chat.User;
+import chat.models.GroupChat;
+import chat.models.GroupMember;
+import chat.models.Message;
+import chat.models.User;
+import chat.network.ChatDtos;
 import io.github.cdimascio.dotenv.Dotenv;
 
 import java.sql.DriverManager;
@@ -13,7 +14,6 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import chat.ChatDtos;
 
 public class Database {
     public static Dotenv dotenv = Dotenv.load();
