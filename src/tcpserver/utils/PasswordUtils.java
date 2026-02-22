@@ -1,3 +1,5 @@
+package tcpserver.utils;
+
 import java.security.SecureRandom;
 import java.util.Base64;
 import de.mkammerer.argon2.Argon2;

@@ -1,3 +1,5 @@
+package tcpserver.app;
+
 import chat.models.GroupChat;
 import chat.models.GroupMember;
 import chat.models.Message;
@@ -8,6 +10,8 @@ import chat.network.PacketType;
 import chat.security.CryptoHelper;
 import com.google.gson.Gson;
 import io.github.cdimascio.dotenv.Dotenv;
+import tcpserver.database.Database;
+import tcpserver.utils.PasswordUtils;
 
 import java.io.*;
 import java.net.*;

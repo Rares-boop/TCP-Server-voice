@@ -1,3 +1,5 @@
+package tcpserver.database;
+
 import chat.models.GroupChat;
 import chat.models.GroupMember;
 import chat.models.Message;
